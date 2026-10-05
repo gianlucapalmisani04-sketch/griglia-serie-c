@@ -175,7 +175,12 @@ function vGriglia(c){
     <div class="row">${['tutte:Tutte','andata:Andata','ritorno:Ritorno','po:Playoff/Playout'].map(x=>{const [k,l]=x.split(':');return `<button class="btn small ${filtroGriglia===k?'primary':''}" data-fg="${k}">${l}</button>`}).join('')}</div>
   </div>
   <div class="legend" style="margin:12px 0">${FASCE.map(f=>`<span class="${f.cls}">${f.nome}</span>`).join('')}<span class="seg" style="background:var(--surface2)">Senza voto</span><span style="background:var(--rest);color:var(--muted)">Riposo</span></div>`;
-  if(!T.length){ h += `<p class="muted">Nessuna gara in questa fase. ${isAdmin?'Aggiungi le gare di playoff dalla sezione Gestione.':''}</p></div>`; c.innerHTML=h; return; }
+  if(!T.length){
+    h += `<p class="muted">Nessuna gara in questa fase per ora. ${isAdmin?'Le gare di playoff/playout si aggiungono dalla sezione Gestione, quando saranno note.':'Le gare compariranno quando saranno inserite.'}</p></div>`;
+    c.innerHTML=h;
+    c.querySelectorAll('[data-fg]').forEach(b=>b.onclick=()=>{filtroGriglia=b.dataset.fg; lsSet('filtroGriglia',filtroGriglia); render();});
+    return;
+  }
   h += `<div class="tablewrap"><table class="grid"><thead><tr><th class="ref">Arbitro</th>${T.map(t=>`<th title="${esc(t.nome)}" ${isAdmin?`data-turno="${t.key}" style="cursor:pointer"`:''}>${esc(t.label)}<div class="small muted" style="font-weight:400">${fmtData(t.data).slice(4)}</div></th>`).join('')}<th class="num">Gare</th><th class="num">Oss.</th></tr></thead><tbody>`;
   for(const a of arbs){
     let ng=0, no=0;
