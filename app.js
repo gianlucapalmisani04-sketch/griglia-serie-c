@@ -101,6 +101,7 @@ function migra(d){
   const s = clone(window.SEED);
   if(!d || !d.arbitri) return s;
   d.impostazioni = Object.assign({}, s.impostazioni, d.impostazioni||{});
+  if(!d.impostazioni._derbyOk){ d.impostazioni.consentiDerby = true; d.impostazioni._derbyOk = true; } // il derby cittadino è arbitrabile
   d.osservatori ||= []; d.squadre ||= []; d.gare ||= [];
   return d;
 }
@@ -155,10 +156,10 @@ if(lsGet('tema')) document.documentElement.dataset.theme = lsGet('tema');
 $('#nav').onclick = e => { const b=e.target.closest('button'); if(!b) return; view=b.dataset.v; lsSet('vista',view); render(); };
 function render(){
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
-  charts.forEach(c=>c.destroy()); charts=[];
+  charts.forEach(c=>c.destroy()); charts=[]; for(const k in _clCache) delete _clCache[k];
   const m=$('#main');
   const banner = DEMO ? `<div class="banner"><b>Modalità demo:</b> i dati vengono salvati solo in questo browser. Per pubblicare il sito con i dati condivisi completa la configurazione di Supabase in <code>config.js</code>.</div>` : '';
-  const V = {griglia:vGriglia, giornate:vGiornate, previsione:vPrevisione, riepilogo:vRiepilogo, stats:vStats, matrice:vMatrice, gestione:vGestione}[view] || vGriglia;
+  const V = {griglia:vGriglia, giornate:vGiornate, previsione:vPrevisione, riepilogo:vRiepilogo, stats:vStats, matrice:vMatrice, classifica:vClassifica, gestione:vGestione}[view] || vGriglia;
   m.innerHTML = banner; const c=document.createElement('div'); m.appendChild(c); V(c);
 }
 
@@ -232,7 +233,7 @@ function formGara(g, T){
   const dis = isAdmin ? '' : 'disabled';
   const av = avvisiGara(g,T);
   return `<div class="match" data-gid="${g.id}">
-    <div class="head"><div><div class="teams">${esc(partita(g))}</div>
+    <div class="head"><div><div class="teams">${esc(nomeSq(g.casa))} ${haRis(g)?`<span style="color:var(--accent)">${g.pc} – ${g.po}</span>`:'–'} ${esc(nomeSq(g.ospite))} ${badgeGara(g,T)}</div>
       <div class="meta">Gara ${g.numero||'—'} · ${fmtData(g.data)} ore ${esc(g.ora||'')} · ${esc(g.campo||'')} (${esc(cittaSq(g.casa))})</div></div>
       ${isAdmin?`<div class="row small"><input type="date" data-k="data" value="${esc(g.data)}" title="Data (per posticipi)"><input type="time" data-k="ora" value="${esc(g.ora)}"></div>`:''}</div>
     <div class="fields">
@@ -241,7 +242,9 @@ function formGara(g, T){
       <label class="f">2° arbitro<select data-k="a2" ${dis}>${opzioni(arbOpts,g.a2)}</select></label>
       <label class="f">Voto 2° arb.<select data-k="voto2" ${dis}>${opzioni(votoOpts,g.voto2==null?'':(+g.voto2).toFixed(1))}</select></label>
       <label class="f">Osservatore<select data-k="oss" ${dis}>${opzioni(ossOpts,g.oss,'Nessuno')}</select></label>
-      <label class="f">Note<input type="text" data-k="note" value="${esc(g.note)}" ${dis} placeholder="${isAdmin?'es. risultato, episodi…':''}"></label>
+      <label class="f">Punti ${esc(sigla(g.casa))}<input type="number" min="0" max="250" inputmode="numeric" data-k="pc" value="${g.pc??''}" ${dis}></label>
+      <label class="f">Punti ${esc(sigla(g.ospite))}<input type="number" min="0" max="250" inputmode="numeric" data-k="po" value="${g.po??''}" ${dis}></label>
+      <label class="f">Note<input type="text" data-k="note" value="${esc(g.note)}" ${dis} placeholder="${isAdmin?'es. episodi, falli tecnici…':''}"></label>
     </div>
     ${av.length?`<div class="small" style="color:var(--warn)">⚠ ${av.map(esc).join(' · ')}</div>`:''}
   </div>`;
@@ -250,7 +253,7 @@ function collegaForm(root, after){
   root.addEventListener('change', e=>{
     const el=e.target; const box=el.closest('.match'); if(!box||!el.dataset.k||!isAdmin) return;
     const g=DB.gare.find(x=>x.id===box.dataset.gid); const k=el.dataset.k;
-    let v=el.value; if(k==='voto1'||k==='voto2') v = v===''?null:+v;
+    let v=el.value; if(k==='voto1'||k==='voto2'||k==='pc'||k==='po') v = v===''?null:+v;
     g[k]=v; salva(); after && after(g);
   });
 }
@@ -424,7 +427,7 @@ function vPrevisione(c){
       <div class="kpi"><div class="v">${r.fisso?'—':r.indisp?0:(r.nPoss??0)+' / '+t.gare.length}</div><div class="l">Gare che può fare (città: ${esc(a.citta||'?')}${a.cittaConfermata?'':', da verificare'})</div></div>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Partita</th><th>Data</th><th>Ultima volta con queste squadre</th><th>Probabilità</th><th>Note</th></tr></thead><tbody>
-    ${righe.map(x=>`<tr class="${x.motivo&&x.p===0?'excl':''}"><td>${esc(partita(x.g))}</td><td>${fmtData(x.g.data)} ${esc(x.g.ora)}</td><td class="small muted">${esc(x.storia)}</td>
+    ${righe.map(x=>`<tr class="${x.motivo&&x.p===0?'excl':''}"><td>${esc(partita(x.g))} ${badgeGara(x.g,T)}</td><td>${fmtData(x.g.data)} ${esc(x.g.ora)}</td><td class="small muted">${esc(x.storia)}</td>
       <td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="bar" style="width:90px"><i style="width:${Math.round(x.p*100)}%"></i></div><b>${pct(x.p)}</b></div></td>
       <td class="small muted">${esc(x.motivo)}</td></tr>`).join('')}
     </tbody></table></div>
@@ -571,6 +574,77 @@ function vMatrice(c){
 }
 
 /* ============================================================
+   CLASSIFICA E BIG MATCH
+   ============================================================ */
+const haRis = g => g.pc!=null && g.po!=null && g.pc!=='' && g.po!=='' && +g.pc!==+g.po;
+/** Classifica della regular season considerando i turni con indice < fino (2 punti a vittoria).
+ *  Parità: punti → scontri diretti (punti, poi differenza) → differenza canestri → punti fatti */
+function classifica(fino){
+  const T=turni(); const R={};
+  DB.squadre.forEach(s=>R[s.id]={id:s.id,g:0,v:0,p:0,pt:0,pf:0,ps:0,forma:[]});
+  const gare=[]; T.filter(t=>t.idx<fino && (t.fase==='andata'||t.fase==='ritorno')).forEach(t=>t.gare.forEach(g=>{ if(haRis(g)) gare.push(g); }));
+  for(const g of gare){
+    const c=R[g.casa], o=R[g.ospite]; if(!c||!o) continue; const pc=+g.pc, po=+g.po;
+    c.g++; o.g++; c.pf+=pc; c.ps+=po; o.pf+=po; o.ps+=pc;
+    if(pc>po){ c.v++; c.pt+=2; o.p++; c.forma.push('V'); o.forma.push('P'); } else { o.v++; o.pt+=2; c.p++; o.forma.push('V'); c.forma.push('P'); }
+  }
+  const arr=Object.values(R);
+  const h2h=(ids)=>{ const m={}; ids.forEach(i=>m[i]={pt:0,d:0}); gare.forEach(g=>{ if(m[g.casa]&&m[g.ospite]){ const w=+g.pc>+g.po?g.casa:g.ospite; m[w].pt+=2; m[g.casa].d+=g.pc-g.po; m[g.ospite].d+=g.po-g.pc; } }); return m; };
+  arr.sort((a,b)=>b.pt-a.pt);
+  const out=[]; for(let i=0;i<arr.length;){ let j=i; while(j<arr.length && arr[j].pt===arr[i].pt) j++; const grp=arr.slice(i,j);
+    if(grp.length>1){ const m=h2h(grp.map(x=>x.id)); grp.sort((a,b)=>(m[b.id].pt-m[a.id].pt)||(m[b.id].d-m[a.id].d)||((b.pf-b.ps)-(a.pf-a.ps))||(b.pf-a.pf)); }
+    out.push(...grp); i=j; }
+  out.forEach((r,i)=>{ r.pos=i+1; r.forma=r.forma.slice(-5); });
+  return out;
+}
+/** Etichette importanza di una gara, usando la classifica prima del suo turno */
+const _clCache = {};
+function infoGara(g, T){
+  const t=T.find(x=>x.gare.includes(g)); if(!t) return null;
+  const key=t.idx; const cl=_clCache[key] ||= classifica(t.idx);
+  const giocate = cl.reduce((s,r)=>s+r.g,0);
+  const pc=cl.find(r=>r.id===g.casa), po=cl.find(r=>r.id===g.ospite); if(!pc||!po) return null;
+  const tag=[]; const n=cl.length;
+  if(normCity(cittaSq(g.casa))===normCity(cittaSq(g.ospite))) tag.push({t:'Derby',c:'f2'});
+  if(giocate>0 && (g.fase==='andata'||g.fase==='ritorno')){
+    const top = Math.max(pc.pos,po.pos), gap=Math.abs(pc.pt-po.pt);
+    if(top<=4 && gap<=4) tag.push({t:'Big match',c:'f4'});
+    else if(pc.pos<=8 && po.pos<=8 && Math.abs(pc.pos-po.pos)<=2 && gap<=2) tag.push({t:'Scontro playoff',c:'f5'});
+    if(Math.min(pc.pos,po.pos)>n-4 && gap<=4) tag.push({t:'Scontro salvezza',c:'f1'});
+  }
+  // indice di importanza 0-100: posizioni alte e vicine in classifica
+  const imp = giocate>0 ? Math.round(100*(1-((pc.pos+po.pos-3)/(2*n-3)))*0.7 + 30*(1-Math.min(Math.abs(pc.pt-po.pt),10)/10)) : null;
+  return {pc,po,tag,imp};
+}
+function badgeGara(g,T){ const i=infoGara(g,T); if(!i) return ''; return i.tag.map(x=>`<span class="${x.c}" style="font-size:11px;padding:2px 7px;border-radius:99px;font-weight:600;vertical-align:middle">${x.t}</span>`).join(' '); }
+
+let clTurno=null;
+function vClassifica(c){
+  const T=turni(); const ultimo = T.filter(t=>t.gare.some(haRis)).pop();
+  const cl = classifica(ultimo ? ultimo.idx+1 : 0); const n=cl.length;
+  const regular = T.filter(t=>t.fase==='andata'||t.fase==='ritorno');
+  if(!clTurno || !T.find(t=>t.key===clTurno)) clTurno = (regular.find(t=>!t.gare.every(haRis) && t.dataMax>=oggi()) || turnoCorrente(T)).key;
+  const t=T.find(x=>x.key===clTurno);
+  const zona = pos => pos<=8 ? 'var(--ok)' : pos>n-4 ? 'var(--danger)' : 'transparent';
+  const gareT = t.gare.map(g=>({g,i:infoGara(g,T)})).sort((a,b)=>(b.i?.imp??0)-(a.i?.imp??0));
+  c.innerHTML = `<div class="grid2">
+  <div class="card"><h2>Classifica</h2><p class="desc">${ultimo?`Aggiornata a ${esc(ultimo.nome)}.`:'Inserisci i risultati nella sezione Giornate per vedere la classifica.'} 2 punti a vittoria. In verde la zona playoff (1ª–8ª), in rosso la zona playout (ultime 4).</p>
+    <div class="tablewrap"><table><thead><tr><th class="num">#</th><th>Squadra</th><th class="num">Pt</th><th class="num">G</th><th class="num">V</th><th class="num">P</th><th class="num">PF</th><th class="num">PS</th><th class="num">Diff</th><th>Ultime</th></tr></thead><tbody>
+    ${cl.map(r=>`<tr><td class="num" style="box-shadow:inset 3px 0 0 ${zona(r.pos)}">${r.pos}</td><td><b>${esc(nomeSq(r.id))}</b></td><td class="num"><b>${r.pt}</b></td><td class="num">${r.g}</td><td class="num">${r.v}</td><td class="num">${r.p}</td><td class="num">${r.pf}</td><td class="num">${r.ps}</td><td class="num">${r.pf-r.ps>0?'+':''}${r.pf-r.ps}</td>
+      <td>${r.forma.map(f=>`<span style="display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:4px;font-size:10px;font-weight:700;margin-right:2px;background:${f==='V'?'var(--ok)':'var(--danger)'};color:#fff">${f}</span>`).join('')}</td></tr>`).join('')}
+    </tbody></table></div></div>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>Big match della giornata</h2>
+    <select id="clT">${T.map(x=>`<option value="${x.key}" ${x.key===clTurno?'selected':''}>${esc(x.nome)} · ${fmtData(x.data)}</option>`).join('')}</select></div>
+    <p class="desc">Gare ordinate per importanza, in base alla classifica prima della giornata: posizioni alte e squadre vicine in punti pesano di più.</p>
+    ${gareT.map(({g,i})=>`<div class="match" style="gap:4px">
+      <div class="row" style="justify-content:space-between"><div class="teams">${esc(nomeSq(g.casa))} ${haRis(g)?`<span style="color:var(--accent)">${g.pc} – ${g.po}</span>`:'–'} ${esc(nomeSq(g.ospite))}</div>${i?.imp!=null?`<span class="pill">Importanza ${i.imp}</span>`:''}</div>
+      <div class="meta">${fmtData(g.data)} ${esc(g.ora)} · ${i&&i.pc.g+i.po.g>0?`${i.pc.pos}ª (${i.pc.pt} pt) vs ${i.po.pos}ª (${i.po.pt} pt)`:'classifica non ancora disponibile'}${g.a1||g.a2?` · Arbitri: ${esc([g.a1,g.a2].filter(Boolean).map(x=>nomeArb(x,true)).join(', '))}`:''}</div>
+      <div>${badgeGara(g,T)}</div></div>`).join('')}
+  </div></div>`;
+  $('#clT').onchange=e=>{clTurno=e.target.value; render();};
+}
+
+/* ============================================================
    VISTA: GESTIONE (solo amministratore)
    ============================================================ */
 const slug = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
@@ -656,11 +730,12 @@ function esportaExcel(){
   for(const a of arbs) griglia.push([`${a.cognome} ${a.nome}`, ...T.map(t=>{ const g=garaDiArbitro(t,a.id); if(!g) return t.compilato?'RIPOSO':''; const v=votoDi(g,a.id); return `${nomeOss(g.oss)||'no oss.'} – ${partita(g)}${v!=null?' – '+fmtV(v):''}`; })]);
   const riep=[['Arbitro','Città','Gare','Andata','Ritorno','Playoff','Riposi','Osservazioni','% copertura','Media voto','Ultimo voto']];
   for(const a of arbs){ const s=statArbitro(a.id,T); riep.push([`${a.cognome} ${a.nome}`,a.citta,s.n,s.A,s.R,s.PO,s.riposi,s.oss,s.n?Math.round(s.cop*100)/100:0,s.media!=null?Math.round(s.media*100)/100:'',s.ultimo??'']); }
-  const gare=[['Turno','Gara n.','Data','Ora','Casa','Ospite','Campo','1° arbitro','Voto 1','2° arbitro','Voto 2','Osservatore','Note']];
-  for(const t of T) for(const g of t.gare) gare.push([t.label,g.numero,g.data,g.ora,nomeSq(g.casa),nomeSq(g.ospite),g.campo,nomeArb(g.a1),g.voto1??'',nomeArb(g.a2),g.voto2??'',nomeOss(g.oss),g.note]);
+  const gare=[['Turno','Gara n.','Data','Ora','Casa','Ospite','Risultato','Campo','1° arbitro','Voto 1','2° arbitro','Voto 2','Osservatore','Note']];
+  for(const t of T) for(const g of t.gare) gare.push([t.label,g.numero,g.data,g.ora,nomeSq(g.casa),nomeSq(g.ospite),haRis(g)?`${g.pc}-${g.po}`:'',g.campo,nomeArb(g.a1),g.voto1??'',nomeArb(g.a2),g.voto2??'',nomeOss(g.oss),g.note]);
   const wb=XLSX.utils.book_new();
   const add=(rows,n,w)=>{ const ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=rows[0].map((_,i)=>({wch:i===0?24:w})); XLSX.utils.book_append_sheet(wb,ws,n); };
-  add(griglia,'Griglia',30); add(riep,'Riepilogo',12); add(gare,'Gare',16);
+  const cl=[['Pos','Squadra','G','V','P','Punti','PF','PS','Diff']]; classifica(T.length).forEach((r,i)=>cl.push([i+1,nomeSq(r.id),r.g,r.v,r.p,r.pt,r.pf,r.ps,r.pf-r.ps]));
+  add(griglia,'Griglia',30); add(riep,'Riepilogo',12); add(gare,'Gare',16); add(cl,'Classifica',10);
   XLSX.writeFile(wb, `Griglia_Serie_C_${oggi()}.xlsx`);
 }
 
