@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Griglia Serie C</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='44' fill='%23e8742c'/><path d='M6 50h88M50 6v88M20 18c18 18 18 46 0 64M80 18c-18 18-18 46 0 64' stroke='%23222' stroke-width='5' fill='none'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f2; --surface:#fff; --surface2:#f0eeea; --line:#e2dfd8; --text:#1d1c1a; --muted:#6d6a63;
+  --accent:#d9631e; --accent-soft:#fbe9dd; --ok:#2f8a4c; --warn:#b54708; --danger:#c0392b;
+  --f1:#f7a8d4; --f2:#ffcf4a; --f3:#cdf5cf; --f4:#1f8a3a; --f5:#9cc8ff;
+  --f1t:#5c1640; --f2t:#4d3500; --f3t:#1d4a22; --f4t:#fff; --f5t:#0d2f5c;
+  --rest:#ecebe7; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);
+  --radius:12px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141413; --surface:#1e1d1b; --surface2:#262522; --line:#34322e; --text:#eeece6; --muted:#a29e95;
+  --accent:#f08a46; --accent-soft:#3a2618; --rest:#2a2926; --shadow:none;
+  --f1:#7a2f5a; --f2:#7a5c0a; --f3:#2c5a33; --f4:#1c7a35; --f5:#2b5687;
+  --f1t:#ffe0f1; --f2t:#fff2cc; --f3t:#e2ffe4; --f4t:#fff; --f5t:#e3efff;
+}}
+:root[data-theme="dark"]{
+  --bg:#141413; --surface:#1e1d1b; --surface2:#262522; --line:#34322e; --text:#eeece6; --muted:#a29e95;
+  --accent:#f08a46; --accent-soft:#3a2618; --rest:#2a2926; --shadow:none;
+  --f1:#7a2f5a; --f2:#7a5c0a; --f3:#2c5a33; --f4:#1c7a35; --f5:#2b5687;
+  --f1t:#ffe0f1; --f2t:#fff2cc; --f3t:#e2ffe4; --f4t:#fff; --f5t:#e3efff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+.top{max-width:1300px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px}
+.logo{width:30px;height:30px;flex:none}
+h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px}
+.spacer{flex:1}
+nav{max-width:1300px;margin:0 auto;padding:0 16px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{border:0;background:none;padding:10px 12px;border-bottom:2px solid transparent;color:var(--muted);font-weight:500;cursor:pointer;white-space:nowrap}
+nav button.on{color:var(--text);border-color:var(--accent)}
+main{max-width:1300px;margin:0 auto;padding:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
+.card h2{font-size:15px;margin:0 0 4px}
+.card .desc{color:var(--muted);font-size:13px;margin:0 0 12px}
+.btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn:hover{background:var(--surface2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.small{padding:4px 8px;font-size:12px}
+.btn.danger{color:var(--danger)}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--surface2);font-size:12px;color:var(--muted)}
+.pill.admin{background:var(--accent-soft);color:var(--accent)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input[type=text],input[type=email],input[type=password],input[type=number],input[type=date],input[type=time]{
+  border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px;min-width:0}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:75vh}
+table{border-collapse:separate;border-spacing:0;width:100%}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--surface2);font-size:12px;font-weight:600;color:var(--muted);z-index:2}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+/* griglia */
+.grid td,.grid th{padding:0;border-right:1px solid var(--line)}
+.grid th{padding:6px 4px;text-align:center;min-width:92px}
+.grid th.ref,.grid td.ref{position:sticky;left:0;background:var(--surface);z-index:3;padding:6px 10px;min-width:150px;text-align:left}
+.grid th.ref{z-index:4;background:var(--surface2)}
+.grid tr.me td.ref{color:var(--accent);font-weight:600}
+.cell{display:block;min-height:46px;padding:4px 6px;font-size:11.5px;line-height:1.25;cursor:default}
+.cell b{display:block;font-size:12px}
+.cell .o{opacity:.85}
+.cell.rest{background:var(--rest);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:11px;letter-spacing:.04em}
+.cell.click{cursor:pointer}
+.f1{background:var(--f1);color:var(--f1t)} .f2{background:var(--f2);color:var(--f2t)} .f3{background:var(--f3);color:var(--f3t)}
+.f4{background:var(--f4);color:var(--f4t)} .f5{background:var(--f5);color:var(--f5t)}
+.g-andata{} .seg{background:var(--accent-soft)!important;color:var(--accent)!important}
+.legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
+.legend span{padding:3px 8px;border-radius:6px}
+/* giornate */
+.match{display:grid;grid-template-columns:1fr;gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;background:var(--surface)}
+.match .head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.match .teams{font-weight:600;font-size:15px}
+.match .meta{color:var(--muted);font-size:12px}
+.match .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+.kpi{background:var(--surface2);border-radius:10px;padding:10px 12px}
+.kpi .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12px;color:var(--muted)}
+.bar{height:8px;border-radius:4px;background:var(--surface2);overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.excl{color:var(--muted);text-decoration:line-through}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.heat td.num{text-align:center}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:.2s;pointer-events:none;z-index:99}
+#toast.on{opacity:1}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);padding:20px;max-width:min(440px,92vw);width:100%}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.hide{display:none!important}
+.banner{background:var(--accent-soft);color:var(--text);border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:13px}
+canvas{max-width:100%}
+@media (max-width:600px){ .top{gap:8px} h1{font-size:15px} #sottotitolo{display:none} main{padding:12px} .card{padding:12px} .grid th.ref,.grid td.ref{min-width:112px;max-width:112px;white-space:normal;font-size:12.5px} .grid th{min-width:84px} #stato{font-size:11px;padding:2px 6px} }
+.chartbox{position:relative;height:240px}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="var(--accent)"/><path d="M6 50h88M50 6v88M20 18c18 18 18 46 0 64M80 18c-18 18-18 46 0 64" stroke="var(--text)" stroke-width="5" fill="none" opacity=".75"/></svg>
+    <div>
+      <h1 id="titolo">Griglia Serie C</h1>
+      <div class="sub" id="sottotitolo">Designazioni, osservatori e voti</div>
+    </div>
+    <div class="spacer"></div>
+    <span id="stato" class="pill">…</span>
+    <button class="btn small" id="btnTema" title="Tema chiaro/scuro" aria-label="Tema chiaro/scuro"><svg width="14" height="14" viewBox="0 0 16 16" style="display:block"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
+    <button class="btn small" id="btnLogin">Accedi</button>
+  </div>
+  <nav id="nav">
+    <button data-v="griglia" class="on">Griglia</button>
+    <button data-v="giornate">Giornate</button>
+    <button data-v="previsione">Previsione</button>
+    <button data-v="riepilogo">Riepilogo</button>
+    <button data-v="stats">Statistiche</button>
+    <button data-v="matrice">Osservatori</button>
+    <button data-v="gestione" class="adminOnly hide">Gestione</button>
+  </nav>
+</header>
+<main id="main"></main>
+<div id="toast"></div>
+
+<dialog id="dlgLogin">
+  <h2 style="margin-top:0">Accesso amministratore</h2>
+  <p class="muted small">Solo chi gestisce la griglia deve accedere. Gli altri possono consultare tutto senza account.</p>
+  <form id="formLogin" class="row" style="flex-direction:column;align-items:stretch">
+    <label class="f">Email<input type="email" id="lgEmail" required autocomplete="username"></label>
+    <label class="f">Password<input type="password" id="lgPwd" required autocomplete="current-password"></label>
+    <div class="row" style="justify-content:flex-end;margin-top:8px">
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">Annulla</button>
+      <button class="btn primary">Entra</button>
+    </div>
+    <div id="lgErr" class="small" style="color:var(--danger)"></div>
+  </form>
+</dialog>
+
+<dialog id="dlgGara"></dialog>
+
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
