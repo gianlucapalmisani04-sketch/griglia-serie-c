@@ -306,10 +306,10 @@ function cittaVietata(a, g){
 function vincoliArbitro(id, t, T){
   const N = +DB.impostazioni.finestra || 3;
   const prima = T.filter(x=>x.idx < t.idx);
-  const recenti = new Set(), conteggio = {};
+  const recenti = new Set(), conteggio = {}, ultima = {};
   prima.slice(-N).forEach(x=>{ const g=garaDiArbitro(x,id); if(g){ recenti.add(g.casa); recenti.add(g.ospite); }});
-  prima.forEach(x=>{ const g=garaDiArbitro(x,id); if(g){ conteggio[g.casa]=(conteggio[g.casa]||0)+1; conteggio[g.ospite]=(conteggio[g.ospite]||0)+1; }});
-  return { recenti, conteggio };
+  prima.forEach((x,i)=>{ const g=garaDiArbitro(x,id); if(g){ for(const q of [g.casa,g.ospite]){ conteggio[q]=(conteggio[q]||0)+1; ultima[q]=prima.length-i; } } });
+  return { recenti, conteggio, ultima };   // ultima[squadra] = quante giornate fa l'ha arbitrata
 }
 /** Stato di riposo: quante giornate consecutive (tra quelle compilate) ha riposato prima di t */
 function statoRiposo(id, t, T){
@@ -330,15 +330,24 @@ function tassiRiposo(T){
   return { r, n, d };
 }
 function rng(seed){ let a=0; for(const ch of String(seed)) a=(a*31+ch.charCodeAt(0))|0; return ()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+/** Peso di una gara per un arbitro: NON dipende dalla distanza, ma da
+ *  - vincoli (squadra nelle ultime N giornate, squadra della propria città) → esclusa
+ *  - da quanto tempo non arbitra quelle squadre (più tempo = più probabile)
+ *  - quante volte le ha già arbitrate in stagione (meno volte = più probabile) */
 function compatibilita(a, g, t, T){
   const v = vincoliArbitro(a.id, t, T);
-  if(v.recenti.has(g.casa) || v.recenti.has(g.ospite)) return {w:0, motivo:`squadra arbitrata nelle ultime ${DB.impostazioni.finestra} giornate`};
-  if(cittaVietata(a,g)) return {w:0, motivo:'squadra della propria città'};
-  const dist = km(a.citta, cittaSq(g.casa));
-  const wd = dist==null ? 0.5 : Math.exp(-dist/90);
+  const N = +DB.impostazioni.finestra || 3;
+  if(v.recenti.has(g.casa) || v.recenti.has(g.ospite)) return {w:0, motivo:`squadra arbitrata nelle ultime ${N} giornate`, v};
+  if(cittaVietata(a,g)) return {w:0, motivo:'squadra della propria città', v};
+  const fRec = q => v.ultima[q]==null ? 1 : 1 - Math.exp(-(v.ultima[q]-N)/3);
   const fam = (v.conteggio[g.casa]||0) + (v.conteggio[g.ospite]||0);
-  return {w: wd/(1+0.6*fam), dist, fam};
+  return {w: Math.max(0.05, fRec(g.casa)*fRec(g.ospite)) / (1+0.5*fam), fam, v};
 }
+/** Simulazione Monte Carlo della giornata intera:
+ *  1) si scelgono gli arbitri che non riposano (pesati su quanto hanno riposato)
+ *  2) si riempiono prima le gare con MENO arbitri possibili (gli incastri),
+ *     così chi può fare solo una gara finisce su quella
+ *  3) se una gara non ha nessun arbitro possibile tra i scelti, si "richiama" uno a riposo */
 function simula(t, T, N=3000){
   const ind = new Set((DB.indisponibili||{})[t.key]||[]);
   const fissi = new Set(); t.gare.forEach(g=>{ if(g.a1) fissi.add(g.a1); if(g.a2) fissi.add(g.a2); });
@@ -347,31 +356,37 @@ function simula(t, T, N=3000){
   const wRip = Object.fromEntries(pool.map(a=>{ const s=statoRiposo(a.id,t,T); return [a.id, s==null ? 0.55 : tassi[s]]; }));
   const comp = {}; pool.forEach(a=>{ comp[a.id]={}; t.gare.forEach(g=>comp[a.id][g.id]=compatibilita(a,g,t,T)); });
   const slot0 = Object.fromEntries(t.gare.map(g=>[g.id, 2-(g.a1?1:0)-(g.a2?1:0)]));
-  const occ0 = Object.fromEntries(t.gare.map(g=>[g.id, [g.a1,g.a2].filter(Boolean)]));
   const S = Object.values(slot0).reduce((s,x)=>s+x,0);
   const cont = Object.fromEntries(pool.map(a=>[a.id,{des:0, g:{}}]));
   const R = rng(t.key+DB.arbitri.length+S);
+  const pesca = (lista, peso) => { const p=lista.map(peso); let u=R()*p.reduce((s,x)=>s+x,0), j=0; while(j<p.length-1 && (u-=p[j])>0) j++; return lista[j]; };
   if(S>0) for(let it=0; it<N; it++){
-    const slot = {...slot0}; const occ = Object.fromEntries(Object.entries(occ0).map(([k,v])=>[k,[...v]]));
+    const slot = {...slot0};
     const ordine = pool.map(a=>({a, k: Math.pow(R(), 1/Math.max(wRip[a.id],1e-6))})).sort((x,y)=>y.k-x.k).map(x=>x.a);
-    let presi = ordine.slice(0,S), riserva = ordine.slice(S), liberi = S;
-    const fattibili = a => t.gare.filter(g=>slot[g.id]>0 && comp[a.id][g.id].w>0);
-    presi.sort((x,y)=>fattibili(x).length - fattibili(y).length);
-    const coda=[...presi];
-    while(coda.length && liberi>0){
-      const a = coda.shift(); const fg = fattibili(a);
-      if(!fg.length){ if(riserva.length) coda.push(riserva.shift()); continue; }
-      const pesi = fg.map(g=>{ let w=comp[a.id][g.id].w; for(const o of occ[g.id]){ const d=km(a.citta, arb(o)?.citta); if(d!=null && d<25) w*=1.5; } return w; });
-      let u=R()*pesi.reduce((s,x)=>s+x,0), j=0; while(j<pesi.length-1 && (u-=pesi[j])>0) j++;
-      const g=fg[j]; slot[g.id]--; occ[g.id].push(a.id); liberi--;
-      cont[a.id].des++; cont[a.id].g[g.id]=(cont[a.id].g[g.id]||0)+1;
+    const scelti = new Set(ordine.slice(0,S)), riserva = ordine.slice(S), usati = new Set();
+    while(true){
+      const aperte = t.gare.filter(g=>slot[g.id]>0); if(!aperte.length) break;
+      // candidati per ogni gara aperta tra gli arbitri scelti non ancora usati
+      const cand = aperte.map(g=>({g, c:[...scelti].filter(a=>!usati.has(a.id) && comp[a.id][g.id].w>0)}));
+      cand.sort((x,y)=>x.c.length-y.c.length);
+      let {g, c} = cand[0];
+      if(!c.length){ // nessuno dei scelti può farla: richiamo il primo a riposo compatibile
+        const k = riserva.findIndex(a=>!usati.has(a.id) && comp[a.id][g.id].w>0);
+        if(k<0){ slot[g.id]=0; continue; }
+        const a = riserva.splice(k,1)[0]; scelti.add(a); c=[a];
+        // chi tra gli scelti non può fare nessuna gara aperta lascia il posto
+        const inutile=[...scelti].find(x=>!usati.has(x.id) && x!==a && !aperte.some(gg=>comp[x.id][gg.id].w>0)); if(inutile) scelti.delete(inutile);
+      }
+      const a = pesca(c, x=>comp[x.id][g.id].w);
+      usati.add(a.id); slot[g.id]--; cont[a.id].des++; cont[a.id].g[g.id]=(cont[a.id].g[g.id]||0)+1;
     }
   }
   const res = {};
   for(const a of DB.arbitri){
     if(fissi.has(a.id)){ const g=garaDiArbitro(t,a.id); res[a.id]={fisso:true, pDes:1, pg:{[g.id]:1}}; continue; }
     if(ind.has(a.id)){ res[a.id]={indisp:true, pDes:0, pg:{}}; continue; }
-    const c=cont[a.id]; res[a.id]={ pDes: S? c.des/N : 0, pg: Object.fromEntries(Object.entries(c.g).map(([k,v])=>[k,v/N])), stato: statoRiposo(a.id,t,T), comp: comp[a.id] };
+    const c=cont[a.id]; const nPoss=t.gare.filter(g=>slot0[g.id]>0 && comp[a.id][g.id].w>0).length;
+    res[a.id]={ pDes: S? c.des/N : 0, pg: Object.fromEntries(Object.entries(c.g).map(([k,v])=>[k,v/N])), stato: statoRiposo(a.id,t,T), comp: comp[a.id], nPoss };
   }
   return { res, S, tassi };
 }
@@ -391,12 +406,13 @@ function vPrevisione(c){
   const righe = t.gare.map(g=>{
     const p = r.pg[g.id]||0; const cp = r.comp?.[g.id];
     const motivo = r.fisso ? (garaDiArbitro(t,prevArb)===g?'già designato':'') : r.indisp ? 'indisponibile' : (cp && cp.w===0 ? cp.motivo : (g.a1&&g.a2 ? 'gara già completa' : ''));
-    const dist = km(a.citta, cittaSq(g.casa));
-    return {g,p,motivo,dist};
+    const ul = r.comp?.[g.id]?.v?.ultima || vincoliArbitro(prevArb,t,T).ultima;
+    const txt = q => `${sigla(q)}: ${ul[q]==null?'mai':ul[q]===1?'giornata scorsa':ul[q]+' giornate fa'}`;
+    return {g,p,motivo,storia: txt(g.casa)+' · '+txt(g.ospite)};
   }).sort((x,y)=>y.p-x.p);
   const stato = r.fisso ? 'già designato' : r.indisp ? 'indisponibile' : r.stato==null ? 'nessuno storico ancora' : DESCR_STATO[r.stato];
   let h = `<div class="card"><h2>Partita più probabile</h2>
-    <p class="desc">Stima basata su: chi ha riposato (in media si riposa una giornata ogni due), squadre arbitrate nelle ultime ${DB.impostazioni.finestra} giornate, squadre della propria città, distanza dal campo e combinazione con le designazioni già note degli altri arbitri.</p>
+    <p class="desc">Stima basata su: riposi (in media uno ogni due giornate), squadre arbitrate nelle ultime ${DB.impostazioni.finestra} giornate (escluse), squadre della propria città (escluse), da quanto tempo non arbitri quelle squadre e quante volte le hai già fatte. La giornata viene simulata per intero 3.000 volte: le gare che pochi arbitri possono fare vengono assegnate per prime, quindi conta anche quali gare gli altri non possono fare.</p>
     <div class="row" style="margin-bottom:12px">
       <label class="f">Arbitro<select id="pArb">${arbOpts.map(x=>`<option value="${x.id}" ${x.id===prevArb?'selected':''}>${esc(x.cognome)} ${esc(x.nome)}</option>`).join('')}</select></label>
       <label class="f">Giornata<select id="pTur">${T.map(x=>`<option value="${x.key}" ${x.key===prevTurno?'selected':''}>${esc(x.nome)} · ${fmtData(x.data)}</option>`).join('')}</select></label>
@@ -405,10 +421,10 @@ function vPrevisione(c){
       <div class="kpi"><div class="v" style="color:var(--accent)">${pct(r.pDes)}</div><div class="l">Probabilità di essere designato</div></div>
       <div class="kpi"><div class="v">${pct(1-r.pDes)}</div><div class="l">Probabilità di riposo</div></div>
       <div class="kpi"><div class="v" style="font-size:15px;padding-top:6px">${esc(stato)}</div><div class="l">Situazione</div></div>
-      <div class="kpi"><div class="v">${esc(a.citta||'?')}</div><div class="l">Città usata per le distanze${a.cittaConfermata?'':' (da verificare)'}</div></div>
+      <div class="kpi"><div class="v">${r.fisso?'—':r.indisp?0:(r.nPoss??0)+' / '+t.gare.length}</div><div class="l">Gare che può fare (città: ${esc(a.citta||'?')}${a.cittaConfermata?'':', da verificare'})</div></div>
     </div>
-    <div class="tablewrap"><table><thead><tr><th>Partita</th><th>Data</th><th class="num">Km</th><th>Probabilità</th><th>Note</th></tr></thead><tbody>
-    ${righe.map(x=>`<tr class="${x.motivo&&x.p===0?'excl':''}"><td>${esc(partita(x.g))}</td><td>${fmtData(x.g.data)} ${esc(x.g.ora)}</td><td class="num">${x.dist??'?'}</td>
+    <div class="tablewrap"><table><thead><tr><th>Partita</th><th>Data</th><th>Ultima volta con queste squadre</th><th>Probabilità</th><th>Note</th></tr></thead><tbody>
+    ${righe.map(x=>`<tr class="${x.motivo&&x.p===0?'excl':''}"><td>${esc(partita(x.g))}</td><td>${fmtData(x.g.data)} ${esc(x.g.ora)}</td><td class="small muted">${esc(x.storia)}</td>
       <td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="bar" style="width:90px"><i style="width:${Math.round(x.p*100)}%"></i></div><b>${pct(x.p)}</b></div></td>
       <td class="small muted">${esc(x.motivo)}</td></tr>`).join('')}
     </tbody></table></div>
@@ -571,11 +587,11 @@ function vGestione(c){
       <label class="f" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-imp="consentiDerby" ${I.consentiDerby?'checked':''}> …tranne il derby cittadino</label>
     </div></div>
 
-  <div class="card"><h2>Arbitri</h2><p class="desc">La <b>città</b> serve per distanze e regola “propria città”. Quelle segnate “da verificare” sono state impostate sul capoluogo di provincia.</p>
+  <div class="card"><h2>Arbitri</h2><p class="desc">La <b>città</b> serve per la regola “niente squadre della propria città”. Quelle segnate “da verificare” sono state impostate sul capoluogo di provincia.</p>
     <div class="tablewrap"><table><thead><tr><th>Cognome</th><th>Nome</th><th>Prov.</th><th>Città</th><th>Esord.</th><th></th></tr></thead><tbody>
     ${arbOpts.map(a=>`<tr data-arb="${a.id}"><td><input type="text" data-f="cognome" value="${esc(a.cognome)}" size="12"></td><td><input type="text" data-f="nome" value="${esc(a.nome)}" size="12"></td>
       <td><input type="text" data-f="prov" value="${esc(a.prov)}" size="3"></td>
-      <td><input type="text" data-f="citta" list="dlCitta" value="${esc(a.citta)}" size="16"> ${a.cittaConfermata?'':'<span class="pill">da verificare</span>'}${COORD[normCity(a.citta)]?'':' <span class="pill" style="color:var(--warn)">città non in elenco: distanza non calcolata</span>'}</td>
+      <td><input type="text" data-f="citta" list="dlCitta" value="${esc(a.citta)}" size="16"> ${a.cittaConfermata?'':'<span class="pill">da verificare</span>'}</td>
       <td><input type="checkbox" data-f="esordiente" ${a.esordiente?'checked':''}></td><td><button class="btn small danger" data-del-arb="${a.id}">Elimina</button></td></tr>`).join('')}
     </tbody></table></div>
     <button class="btn small" id="addArb" style="margin-top:8px">+ Aggiungi arbitro</button></div>
