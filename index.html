@@ -13,18 +13,18 @@
   --accent:#d9631e; --accent-soft:#fbe9dd; --ok:#2f8a4c; --warn:#b54708; --danger:#c0392b;
   --f1:#f7a8d4; --f2:#ffcf4a; --f3:#cdf5cf; --f4:#1f8a3a; --f5:#9cc8ff;
   --f1t:#5c1640; --f2t:#4d3500; --f3t:#1d4a22; --f4t:#fff; --f5t:#0d2f5c;
-  --rest:#ecebe7; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);
+  --rest:#ecebe7; --oss:#e4dbff; --osst:#3b2585; --noss:#e2c49c; --nosst:#4a3214; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);
   --radius:12px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#141413; --surface:#1e1d1b; --surface2:#262522; --line:#34322e; --text:#eeece6; --muted:#a29e95;
-  --accent:#f08a46; --accent-soft:#3a2618; --rest:#2a2926; --shadow:none;
+  --accent:#f08a46; --accent-soft:#3a2618; --rest:#2a2926; --oss:#3d3170; --osst:#ece6ff; --noss:#6b4f2c; --nosst:#f6e8d4; --shadow:none;
   --f1:#7a2f5a; --f2:#7a5c0a; --f3:#2c5a33; --f4:#1c7a35; --f5:#2b5687;
   --f1t:#ffe0f1; --f2t:#fff2cc; --f3t:#e2ffe4; --f4t:#fff; --f5t:#e3efff;
 }}
 :root[data-theme="dark"]{
   --bg:#141413; --surface:#1e1d1b; --surface2:#262522; --line:#34322e; --text:#eeece6; --muted:#a29e95;
-  --accent:#f08a46; --accent-soft:#3a2618; --rest:#2a2926; --shadow:none;
+  --accent:#f08a46; --accent-soft:#3a2618; --rest:#2a2926; --oss:#3d3170; --osst:#ece6ff; --noss:#6b4f2c; --nosst:#f6e8d4; --shadow:none;
   --f1:#7a2f5a; --f2:#7a5c0a; --f3:#2c5a33; --f4:#1c7a35; --f5:#2b5687;
   --f1t:#ffe0f1; --f2t:#fff2cc; --f3t:#e2ffe4; --f4t:#fff; --f5t:#e3efff;
 }
@@ -75,7 +75,9 @@ tr:last-child td{border-bottom:0}
 .cell.click{cursor:pointer}
 .f1{background:var(--f1);color:var(--f1t)} .f2{background:var(--f2);color:var(--f2t)} .f3{background:var(--f3);color:var(--f3t)}
 .f4{background:var(--f4);color:var(--f4t)} .f5{background:var(--f5);color:var(--f5t)}
-.g-andata{} .seg{background:var(--accent-soft)!important;color:var(--accent)!important}
+.seg{background:var(--accent-soft)!important;color:var(--accent)!important}
+.oss{background:var(--oss);color:var(--osst)}
+.noss{background:var(--noss);color:var(--nosst)}
 .legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
 .legend span{padding:3px 8px;border-radius:6px}
 /* giornate */
@@ -149,11 +151,11 @@ canvas{max-width:100%}
 
 <dialog id="dlgGara"></dialog>
 
-<script src="config.js"></script>
-<script src="data.js"></script>
+<script src="config.js?v=202610081805"></script>
+<script src="data.js?v=202610081805"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=202610081805"></script>
 </body>
 </html>
