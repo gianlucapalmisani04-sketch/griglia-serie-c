@@ -172,10 +172,10 @@ function vGriglia(c){
   const me = DB.impostazioni.mioArbitro;
   const arbs = [...DB.arbitri].sort((a,b)=>a.cognome.localeCompare(b.cognome));
   let h = `<div class="card"><div class="row" style="justify-content:space-between">
-    <div><h2>Griglia designazioni</h2><p class="desc" style="margin:0">Ogni cella: partita, osservatore e voto. Il colore segue la fascia del voto. ${isAdmin?'<b>Tocca una cella o un’intestazione per modificare.</b>':''}</p></div>
+    <div><h2>Griglia designazioni</h2><p class="desc" style="margin:0">Ogni cella: partita, osservatore e voto. Con il voto il colore segue la fascia; senza voto distingue le gare con e senza osservatore. ${isAdmin?'<b>Tocca una cella o un’intestazione per modificare.</b>':''}</p></div>
     <div class="row">${['tutte:Tutte','andata:Andata','ritorno:Ritorno','po:Playoff/Playout'].map(x=>{const [k,l]=x.split(':');return `<button class="btn small ${filtroGriglia===k?'primary':''}" data-fg="${k}">${l}</button>`}).join('')}</div>
   </div>
-  <div class="legend" style="margin:12px 0">${FASCE.map(f=>`<span class="${f.cls}">${f.nome}</span>`).join('')}<span class="seg" style="background:var(--surface2)">Senza voto</span><span style="background:var(--rest);color:var(--muted)">Riposo</span></div>`;
+  <div class="legend" style="margin:12px 0">${FASCE.map(f=>`<span class="${f.cls}">${f.nome}</span>`).join('')}<span class="oss">Osservatore (senza voto)</span><span class="noss">Senza osservatore</span><span style="background:var(--rest);color:var(--muted)">Riposo</span></div>`;
   if(!T.length){
     h += `<p class="muted">Nessuna gara in questa fase per ora. ${isAdmin?'Le gare di playoff/playout si aggiungono dalla sezione Gestione, quando saranno note.':'Le gare compariranno quando saranno inserite.'}</p></div>`;
     c.innerHTML=h;
@@ -191,7 +191,7 @@ function vGriglia(c){
       if(g){
         ng++; if(g.oss) no++;
         const v = votoDi(g,a.id), f = fascia(v);
-        const cls = f ? f.cls : 'seg';
+        const cls = f ? f.cls : (g.oss ? 'oss' : 'noss');
         const tip = `${partita(g)} · ${fmtData(g.data)} ${g.ora}\nCollega: ${nomeArb(collega(g,a.id))||'—'}\nOsservatore: ${nomeOss(g.oss)||'nessuno'}${v!=null?`\nVoto: ${fmtV(v)} (${f.nome})`:''}`;
         h += `<td><span class="cell ${cls} ${isAdmin?'click':''}" data-gid="${g.id}" title="${esc(tip)}"><b>${esc(partitaBreve(g))}</b><span class="o">${g.oss?esc(ossCognome(g.oss)):'<i>no oss.</i>'}${v!=null?' · '+fmtV(v):''}</span></span></td>`;
       } else {
