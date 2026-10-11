@@ -44,11 +44,11 @@ function km(a,b){
 
 /* ---------------- Voti e fasce ---------------- */
 const FASCE = [
-  {max:7.4, cls:'f1', nome:'Migliorabile'},
-  {max:7.7, cls:'f2', nome:'Sotto lo standard'},
-  {max:8.2, cls:'f3', nome:'Standard'},
-  {max:8.5, cls:'f4', nome:'Sopra lo standard'},
-  {max:8.8, cls:'f5', nome:'Di qualità'},
+  {max:7.4, cls:'f1', nome:'Migliorabile', breve:'Migliorabile', mid:7.3},
+  {max:7.7, cls:'f2', nome:'Sotto lo standard', breve:'Sotto std', mid:7.6},
+  {max:8.2, cls:'f3', nome:'Standard', breve:'Standard', mid:8.0},
+  {max:8.5, cls:'f4', nome:'Sopra lo standard', breve:'Sopra std', mid:8.4},
+  {max:8.8, cls:'f5', nome:'Di qualità', breve:'Qualità', mid:8.7},
 ];
 const fascia = v => (v==null||v==='') ? null : FASCE.find(f=>+v<=f.max+1e-9) || FASCE[4];
 const VOTI = []; for(let v=72; v<=88; v++) VOTI.push((v/10).toFixed(1));
@@ -95,6 +95,15 @@ function turni(){
 const garaDiArbitro = (t,id) => t.gare.find(g=>g.a1===id||g.a2===id);
 const collega = (g,id) => g.a1===id ? g.a2 : g.a1;
 function votoDi(g,id){ const v = g.a1===id ? g.voto1 : g.a2===id ? g.voto2 : null; return v==null||v==='' ? null : +v; }
+/** Valutazione di un arbitro in una gara: voto preciso oppure solo fascia (detta al colloquio) */
+function valDi(g,id){
+  const voto = votoDi(g,id);
+  if(voto!=null){ const f=fascia(voto); return {voto, f, v:voto, soloF:false}; }
+  const fc = g.a1===id ? g.fascia1 : g.a2===id ? g.fascia2 : null;
+  const f = fc ? FASCE.find(x=>x.cls===fc) : null;
+  return f ? {voto:null, f, v:f.mid, soloF:true} : null;
+}
+const fmtVal = x => !x ? '–' : x.soloF ? x.f.breve : fmtV(x.voto);
 
 /* ---------------- Caricamento / salvataggio ---------------- */
 function migra(d){
@@ -172,7 +181,7 @@ function vGriglia(c){
   const me = DB.impostazioni.mioArbitro;
   const arbs = [...DB.arbitri].sort((a,b)=>a.cognome.localeCompare(b.cognome));
   let h = `<div class="card"><div class="row" style="justify-content:space-between">
-    <div><h2>Griglia designazioni</h2><p class="desc" style="margin:0">Ogni cella: partita, osservatore e voto. Con il voto il colore segue la fascia; senza voto distingue le gare con e senza osservatore. ${isAdmin?'<b>Tocca una cella o un’intestazione per modificare.</b>':''}</p></div>
+    <div><h2>Griglia designazioni</h2><p class="desc" style="margin:0">Ogni cella: partita, osservatore e voto. Con voto o fascia il colore segue la fascia di valutazione; altrimenti distingue le gare con e senza osservatore. ${isAdmin?'<b>Tocca una cella o un’intestazione per modificare.</b>':''}</p></div>
     <div class="row">${['tutte:Tutte','andata:Andata','ritorno:Ritorno','po:Playoff/Playout'].map(x=>{const [k,l]=x.split(':');return `<button class="btn small ${filtroGriglia===k?'primary':''}" data-fg="${k}">${l}</button>`}).join('')}</div>
   </div>
   <div class="legend" style="margin:12px 0">${FASCE.map(f=>`<span class="${f.cls}">${f.nome}</span>`).join('')}<span class="oss">Osservatore (senza voto)</span><span class="noss">Senza osservatore</span><span style="background:var(--rest);color:var(--muted)">Riposo</span></div>`;
@@ -190,10 +199,10 @@ function vGriglia(c){
       const g = garaDiArbitro(t,a.id);
       if(g){
         ng++; if(g.oss) no++;
-        const v = votoDi(g,a.id), f = fascia(v);
+        const val = valDi(g,a.id), f = val?.f, v = val;
         const cls = f ? f.cls : (g.oss ? 'oss' : 'noss');
-        const tip = `${partita(g)} · ${fmtData(g.data)} ${g.ora}\nCollega: ${nomeArb(collega(g,a.id))||'—'}\nOsservatore: ${nomeOss(g.oss)||'nessuno'}${v!=null?`\nVoto: ${fmtV(v)} (${f.nome})`:''}`;
-        h += `<td><span class="cell ${cls} ${isAdmin?'click':''}" data-gid="${g.id}" title="${esc(tip)}"><b>${esc(partitaBreve(g))}</b><span class="o">${g.oss?esc(ossCognome(g.oss)):'<i>no oss.</i>'}${v!=null?' · '+fmtV(v):''}</span></span></td>`;
+        const tip = `${partita(g)} · ${fmtData(g.data)} ${g.ora}\nCollega: ${nomeArb(collega(g,a.id))||'—'}\nOsservatore: ${nomeOss(g.oss)||'nessuno'}${val?(val.soloF?`\nFascia: ${f.nome} (voto non noto)`:`\nVoto: ${fmtV(val.voto)} (${f.nome})`):''}`;
+        h += `<td><span class="cell ${cls} ${isAdmin?'click':''}" data-gid="${g.id}" title="${esc(tip)}"><b>${esc(partitaBreve(g))}</b><span class="o">${g.oss?esc(ossCognome(g.oss)):'<i>no oss.</i>'}${val?' · '+fmtVal(val):''}</span></span></td>`;
       } else {
         h += `<td>${t.compilato ? '<span class="cell rest">RIPOSO</span>' : '<span class="cell"></span>'}</td>`;
       }
@@ -229,7 +238,9 @@ function avvisiGara(g, T){
 function formGara(g, T){
   const arbOpts = [...DB.arbitri].sort((a,b)=>a.cognome.localeCompare(b.cognome)).map(a=>[a.id,`${a.cognome} ${a.nome}`]);
   const ossOpts = DB.osservatori.map(o=>[o.id,o.nome]);
-  const votoOpts = VOTI.map(v=>[v,`${v.replace('.',',')} · ${fascia(v).nome}`]);
+  const valSel = (n) => { const v=g['voto'+n], fc=g['fascia'+n]; const cur = v!=null&&v!=='' ? (+v).toFixed(1) : fc ? 'F:'+fc : '';
+    return `<option value="">—</option><optgroup label="Solo fascia (voto non noto)">${FASCE.map(f=>`<option value="F:${f.cls}" ${cur==='F:'+f.cls?'selected':''}>${f.nome}</option>`).join('')}</optgroup>`+
+      `<optgroup label="Voto preciso">${VOTI.map(x=>`<option value="${x}" ${cur===x?'selected':''}>${x.replace('.',',')} · ${fascia(x).nome}</option>`).join('')}</optgroup>`; };
   const dis = isAdmin ? '' : 'disabled';
   const av = avvisiGara(g,T);
   return `<div class="match" data-gid="${g.id}">
@@ -238,9 +249,9 @@ function formGara(g, T){
       ${isAdmin?`<div class="row small"><input type="date" data-k="data" value="${esc(g.data)}" title="Data (per posticipi)"><input type="time" data-k="ora" value="${esc(g.ora)}"></div>`:''}</div>
     <div class="fields">
       <label class="f">1° arbitro<select data-k="a1" ${dis}>${opzioni(arbOpts,g.a1)}</select></label>
-      <label class="f">Voto 1° arb.<select data-k="voto1" ${dis}>${opzioni(votoOpts,g.voto1==null?'':(+g.voto1).toFixed(1))}</select></label>
+      <label class="f">Voto / fascia 1° arb.<select data-k="val1" ${dis}>${valSel(1)}</select></label>
       <label class="f">2° arbitro<select data-k="a2" ${dis}>${opzioni(arbOpts,g.a2)}</select></label>
-      <label class="f">Voto 2° arb.<select data-k="voto2" ${dis}>${opzioni(votoOpts,g.voto2==null?'':(+g.voto2).toFixed(1))}</select></label>
+      <label class="f">Voto / fascia 2° arb.<select data-k="val2" ${dis}>${valSel(2)}</select></label>
       <label class="f">Osservatore<select data-k="oss" ${dis}>${opzioni(ossOpts,g.oss,'Nessuno')}</select></label>
       <label class="f">Punti ${esc(sigla(g.casa))}<input type="number" min="0" max="250" inputmode="numeric" data-k="pc" value="${g.pc??''}" ${dis}></label>
       <label class="f">Punti ${esc(sigla(g.ospite))}<input type="number" min="0" max="250" inputmode="numeric" data-k="po" value="${g.po??''}" ${dis}></label>
@@ -253,7 +264,13 @@ function collegaForm(root, after){
   root.addEventListener('change', e=>{
     const el=e.target; const box=el.closest('.match'); if(!box||!el.dataset.k||!isAdmin) return;
     const g=DB.gare.find(x=>x.id===box.dataset.gid); const k=el.dataset.k;
-    let v=el.value; if(k==='voto1'||k==='voto2'||k==='pc'||k==='po') v = v===''?null:+v;
+    let v=el.value;
+    if(k==='val1'||k==='val2'){ const n=k.slice(-1);
+      if(v==='') { g['voto'+n]=null; g['fascia'+n]=null; }
+      else if(v.startsWith('F:')) { g['voto'+n]=null; g['fascia'+n]=v.slice(2); }
+      else { g['voto'+n]=+v; g['fascia'+n]=null; }
+      salva(); after && after(g); return; }
+    if(k==='pc'||k==='po') v = v===''?null:+v;
     g[k]=v; salva(); after && after(g);
   });
 }
@@ -464,15 +481,17 @@ function statArbitro(id, T){
     s.gare.push({g,t});
     if(g.fase==='andata') s.A++; else if(g.fase==='ritorno') s.R++; else s.PO++;
     if(g.oss){ s.oss++; s.osservatori[g.oss]=(s.osservatori[g.oss]||0)+1; }
-    const v=votoDi(g,id); if(v!=null) s.voti.push({v,t,g});
+    const val=valDi(g,id); if(val) s.voti.push({...val,t,g});
     for(const q of [g.casa,g.ospite]) s.squadre[q]=(s.squadre[q]||0)+1;
     const c=collega(g,id); if(c) s.colleghi[c]=(s.colleghi[c]||0)+1;
     const d=km(a?.citta, cittaSq(g.casa)); if(d) s.km+=2*d;
   }
   s.n = s.gare.length;
-  s.media = s.voti.length ? s.voti.reduce((x,y)=>x+y.v,0)/s.voti.length : null;
-  s.ultimo = s.voti.length ? s.voti[s.voti.length-1].v : null;
-  s.max = s.voti.length ? Math.max(...s.voti.map(x=>x.v)) : null;
+  s.media = s.voti.length ? s.voti.reduce((x,y)=>x+y.v,0)/s.voti.length : null;   // le fasce contano col valore centrale
+  s.stimata = s.voti.some(x=>x.soloF); s.nVoti = s.voti.filter(x=>!x.soloF).length; s.nFasce = s.voti.length - s.nVoti;
+  s.ultimoVal = s.voti.length ? s.voti[s.voti.length-1] : null; s.ultimo = s.ultimoVal?.v ?? null;
+  s.maxVal = s.voti.length ? [...s.voti].sort((a,b)=>b.v-a.v)[0] : null; s.max = s.maxVal?.v ?? null;
+  s.distrib = Object.fromEntries(FASCE.map(f=>[f.cls, s.voti.filter(x=>x.f.cls===f.cls).length]));
   s.cop = s.n ? s.oss/s.n : 0;
   return s;
 }
@@ -488,14 +507,14 @@ function vRiepilogo(c){
   const val = {cognome:r=>r.a.cognome, n:r=>r.s.n, A:r=>r.s.A, R:r=>r.s.R, PO:r=>r.s.PO, oss:r=>r.s.oss, cop:r=>r.s.cop, media:r=>r.s.media??-1, ultimo:r=>r.s.ultimo??-1, riposi:r=>r.s.riposi};
   rows.sort((x,y)=>{ const a=val[sortRiep.k](x), b=val[sortRiep.k](y); return (typeof a==='string'?a.localeCompare(b):a-b)*sortRiep.dir; });
   const th = (k,l,num=true) => `<th class="${num?'num':''}" data-s="${k}" style="cursor:pointer">${l}${sortRiep.k===k?(sortRiep.dir>0?' ▲':' ▼'):''}</th>`;
-  c.innerHTML = `<div class="card"><h2>Riepilogo arbitri</h2><p class="desc">Tocca un’intestazione per ordinare. La copertura è la percentuale di gare con osservatore.</p>
-  <div class="tablewrap"><table><thead><tr>${th('cognome','Arbitro',false)}<th>Città</th>${th('n','Gare')}${th('A','And.')}${th('R','Rit.')}${th('PO','PO')}${th('riposi','Riposi')}${th('oss','Osserv.')}${th('cop','% cop.')}${th('media','Media voto')}${th('ultimo','Ultimo')}<th>Squadra più arbitrata</th></tr></thead><tbody>
+  c.innerHTML = `<div class="card"><h2>Riepilogo arbitri</h2><p class="desc">Tocca un’intestazione per ordinare. La copertura è la percentuale di gare con osservatore. Il simbolo ≈ indica una media che include valutazioni note solo come fascia (contate con il valore centrale della fascia).</p>
+  <div class="tablewrap"><table><thead><tr>${th('cognome','Arbitro',false)}<th>Città</th>${th('n','Gare')}${th('A','And.')}${th('R','Rit.')}${th('PO','PO')}${th('riposi','Riposi')}${th('oss','Osserv.')}${th('cop','% cop.')}${th('media','Media')}${th('ultimo','Ultima val.')}<th>Squadra più arbitrata</th></tr></thead><tbody>
   ${rows.map(({a,s})=>{ const f=fascia(s.media); const fu=fascia(s.ultimo); const ts=topN(s.squadre)[0]; return `<tr class="${a.id===me?'me':''}">
     <td><b>${esc(a.cognome)}</b> ${esc(a.nome)}</td><td class="small muted">${esc(a.citta)}</td>
     <td class="num"><b>${s.n}</b></td><td class="num">${s.A}</td><td class="num">${s.R}</td><td class="num">${s.PO}</td><td class="num">${s.riposi}</td><td class="num">${s.oss}</td>
     <td class="num">${s.n?Math.round(s.cop*100)+'%':'–'}</td>
-    <td class="num"><span class="${f?f.cls:''}" style="padding:2px 6px;border-radius:5px">${fmtV(s.media)}</span></td>
-    <td class="num"><span class="${fu?fu.cls:''}" style="padding:2px 6px;border-radius:5px">${fmtV(s.ultimo)}</span></td>
+    <td class="num"><span class="${f?f.cls:''}" style="padding:2px 6px;border-radius:5px" title="${s.nVoti} voti, ${s.nFasce} solo fascia">${s.stimata?'≈':''}${fmtV(s.media)}</span></td>
+    <td class="num"><span class="${fu?fu.cls:''}" style="padding:2px 6px;border-radius:5px">${fmtVal(s.ultimoVal)}</span></td>
     <td class="small">${ts?`${esc(nomeSq(ts[0]))} (${ts[1]})`:'–'}</td></tr>`; }).join('')}
   </tbody></table></div></div>`;
   c.querySelectorAll('[data-s]').forEach(el=>el.onclick=()=>{ const k=el.dataset.s; sortRiep = {k, dir: sortRiep.k===k ? -sortRiep.dir : (k==='cognome'?1:-1)}; render(); });
@@ -521,23 +540,24 @@ function vStats(c){
     <div class="kpis" style="margin-top:12px">
       <div class="kpi"><div class="v">${s.n}</div><div class="l">Gare dirette</div></div>
       <div class="kpi"><div class="v">${s.oss} <span class="small muted">(${s.n?Math.round(s.cop*100):0}%)</span></div><div class="l">Volte osservato</div></div>
-      <div class="kpi"><div class="v">${fmtV(s.media)}</div><div class="l">Media voto${fm?' · '+fm.nome:''}</div></div>
-      <div class="kpi"><div class="v">${fmtV(s.max)}</div><div class="l">Miglior voto</div></div>
+      <div class="kpi"><div class="v">${s.stimata?'≈':''}${fmtV(s.media)}</div><div class="l">Media${fm?' · '+fm.nome:''}${s.stimata?' (stimata)':''}</div></div>
+      <div class="kpi"><div class="v">${fmtVal(s.maxVal)}</div><div class="l">Miglior valutazione</div></div>
+      <div class="kpi"><div class="v" style="font-size:15px;padding-top:6px">${s.nVoti} vot${s.nVoti===1?'o':'i'} · ${s.nFasce} fasc${s.nFasce===1?'ia':'e'}</div><div class="l">Valutazioni note</div></div>
       <div class="kpi"><div class="v">${s.riposi}</div><div class="l">Riposi</div></div>
       <div class="kpi"><div class="v">${s.km.toLocaleString('it-IT')}</div><div class="l">Km stimati (andata e ritorno)</div></div>
     </div>
     <div class="grid2">
-      <div><h2 style="font-size:13px">Andamento voti</h2>${s.voti.length?'<div class="chartbox"><canvas id="chVoti"></canvas></div>':'<p class="muted small">Nessun voto inserito.</p>'}</div>
+      <div><h2 style="font-size:13px">Andamento valutazioni</h2>${s.voti.length?`<div class="legend" style="margin-bottom:6px">${FASCE.map(f=>`<span class="${f.cls}">${f.breve}: ${s.distrib[f.cls]}</span>`).join('')}</div><div class="chartbox"><canvas id="chVoti"></canvas></div><p class="small muted" style="margin:4px 0 0">Pallino pieno = voto preciso · triangolo = solo fascia (valore centrale).</p>`:'<p class="muted small">Nessuna valutazione inserita.</p>'}</div>
       <div><h2 style="font-size:13px">Da chi è stato osservato</h2>${s.oss?'<div class="chartbox"><canvas id="chOss"></canvas></div>':'<p class="muted small">Nessuna osservazione.</p>'}</div>
     </div>
     <div class="grid2" style="margin-top:16px">
       <div><h2 style="font-size:13px">Squadre arbitrate</h2>${sqTot.length?`<table>${sqTot.map(([k,v])=>`<tr><td>${esc(nomeSq(k))}</td><td style="width:60%"><div class="bar"><i style="width:${v/sqTot[0][1]*100}%"></i></div></td><td class="num">${v}</td></tr>`).join('')}</table>`:'<p class="muted small">—</p>'}</div>
       <div><h2 style="font-size:13px">Colleghi</h2>${Object.keys(s.colleghi).length?`<table>${topN(s.colleghi).map(([k,v])=>`<tr><td>${esc(nomeArb(k))}</td><td class="num">${v}</td></tr>`).join('')}</table>`:'<p class="muted small">—</p>'}
-      <h2 style="font-size:13px;margin-top:14px">Ultime gare</h2>${s.gare.length?`<table>${s.gare.slice(-6).reverse().map(({g,t})=>{const v=votoDi(g,statArb);const f=fascia(v);return `<tr><td class="small">${esc(t.label)}</td><td>${esc(partitaBreve(g))}</td><td class="small muted">${esc(ossCognome(g.oss)||'—')}</td><td class="num"><span class="${f?f.cls:''}" style="padding:2px 6px;border-radius:5px">${fmtV(v)}</span></td></tr>`}).join('')}</table>`:'<p class="muted small">—</p>'}</div>
+      <h2 style="font-size:13px;margin-top:14px">Ultime gare</h2>${s.gare.length?`<table>${s.gare.slice(-6).reverse().map(({g,t})=>{const vl=valDi(g,statArb);const f=vl?.f;return `<tr><td class="small">${esc(t.label)}</td><td>${esc(partitaBreve(g))}</td><td class="small muted">${esc(ossCognome(g.oss)||'—')}</td><td class="num"><span class="${f?f.cls:''}" style="padding:2px 6px;border-radius:5px">${fmtVal(vl)}</span></td></tr>`}).join('')}</table>`:'<p class="muted small">—</p>'}</div>
     </div></div>
   <div class="grid2">
-    <div class="card"><h2>Classifica media voti</h2><p class="desc">Solo arbitri con almeno un voto inserito.</p>
-      ${classifica.length?`<table>${classifica.map((r,i)=>{const f=fascia(r.s.media);return `<tr class="${r.x.id===DB.impostazioni.mioArbitro?'me':''}"><td class="num muted">${i+1}</td><td>${esc(r.x.cognome)} ${esc(r.x.nome[0])}.</td><td class="num small muted">${r.s.voti.length} vot${r.s.voti.length===1?'o':'i'}</td><td class="num"><span class="${f.cls}" style="padding:2px 6px;border-radius:5px">${fmtV(r.s.media)}</span></td></tr>`}).join('')}</table>`:'<p class="muted small">Ancora nessun voto.</p>'}</div>
+    <div class="card"><h2>Classifica valutazioni</h2><p class="desc">Arbitri con almeno una valutazione. Le fasce senza voto contano con il valore centrale (≈ = media stimata).</p>
+      ${classifica.length?`<table>${classifica.map((r,i)=>{const f=fascia(r.s.media);return `<tr class="${r.x.id===DB.impostazioni.mioArbitro?'me':''}"><td class="num muted">${i+1}</td><td>${esc(r.x.cognome)} ${esc(r.x.nome[0])}.</td><td class="num small muted">${r.s.nVoti} v · ${r.s.nFasce} f</td><td class="num"><span class="${f.cls}" style="padding:2px 6px;border-radius:5px">${r.s.stimata?'≈':''}${fmtV(r.s.media)}</span></td></tr>`}).join('')}</table>`:'<p class="muted small">Ancora nessun voto.</p>'}</div>
     <div class="card"><h2>Osservatori più presenti</h2><p class="desc">Gare osservate da ciascuno in stagione.</p>
       ${Object.keys(ossGlob).length?'<div class="chartbox" style="height:300px"><canvas id="chOssG"></canvas></div>':'<p class="muted small">Ancora nessuna osservazione.</p>'}</div>
   </div>`;
@@ -545,8 +565,8 @@ function vStats(c){
   if(!window.Chart) return;
   Chart.defaults.font.family='Inter, system-ui, sans-serif'; Chart.defaults.color=css('--muted'); Chart.defaults.borderColor=css('--line'); Chart.defaults.maintainAspectRatio=false; Chart.defaults.datasets.bar.maxBarThickness=22;
   const acc=css('--accent');
-  if(s.voti.length) charts.push(new Chart($('#chVoti'),{type:'line',data:{labels:s.voti.map(x=>x.t.label),datasets:[{data:s.voti.map(x=>x.v),borderColor:acc,backgroundColor:acc,pointRadius:4,tension:.25}]},
-    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const x=s.voti[ctx.dataIndex];return `${fmtV(x.v)} · ${partita(x.g)}`;}}}},scales:{y:{min:7.2,max:8.8,ticks:{stepSize:.2}}}}}));
+  if(s.voti.length) charts.push(new Chart($('#chVoti'),{type:'line',data:{labels:s.voti.map(x=>x.t.label),datasets:[{data:s.voti.map(x=>x.v),borderColor:acc,backgroundColor:s.voti.map(x=>x.soloF?'transparent':acc),pointStyle:s.voti.map(x=>x.soloF?'triangle':'circle'),pointRadius:s.voti.map(x=>x.soloF?6:4),pointBorderWidth:2,tension:.25}]},
+    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const x=s.voti[ctx.dataIndex];return `${x.soloF?'Fascia '+x.f.nome:fmtV(x.voto)} · ${partita(x.g)}`;}}}},scales:{y:{min:7.2,max:8.8,ticks:{stepSize:.2}}}}}));
   if(s.oss){ const o=topN(s.osservatori); charts.push(new Chart($('#chOss'),{type:'bar',data:{labels:o.map(x=>nomeOss(x[0])),datasets:[{data:o.map(x=>x[1]),backgroundColor:acc,borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{stepSize:1}}}}})); }
   if(Object.keys(ossGlob).length){ const o=topN(ossGlob); charts.push(new Chart($('#chOssG'),{type:'bar',data:{labels:o.map(x=>nomeOss(x[0])),datasets:[{data:o.map(x=>x[1]),backgroundColor:acc,borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{stepSize:1}}}}})); }
 }
@@ -727,11 +747,11 @@ function esportaExcel(){
   if(!window.XLSX) return toast('Libreria Excel non caricata');
   const T=turni(); const arbs=[...DB.arbitri].sort((a,b)=>a.cognome.localeCompare(b.cognome));
   const griglia=[['Arbitro',...T.map(t=>t.label)]];
-  for(const a of arbs) griglia.push([`${a.cognome} ${a.nome}`, ...T.map(t=>{ const g=garaDiArbitro(t,a.id); if(!g) return t.compilato?'RIPOSO':''; const v=votoDi(g,a.id); return `${nomeOss(g.oss)||'no oss.'} – ${partita(g)}${v!=null?' – '+fmtV(v):''}`; })]);
-  const riep=[['Arbitro','Città','Gare','Andata','Ritorno','Playoff','Riposi','Osservazioni','% copertura','Media voto','Ultimo voto']];
-  for(const a of arbs){ const s=statArbitro(a.id,T); riep.push([`${a.cognome} ${a.nome}`,a.citta,s.n,s.A,s.R,s.PO,s.riposi,s.oss,s.n?Math.round(s.cop*100)/100:0,s.media!=null?Math.round(s.media*100)/100:'',s.ultimo??'']); }
-  const gare=[['Turno','Gara n.','Data','Ora','Casa','Ospite','Risultato','Campo','1° arbitro','Voto 1','2° arbitro','Voto 2','Osservatore','Note']];
-  for(const t of T) for(const g of t.gare) gare.push([t.label,g.numero,g.data,g.ora,nomeSq(g.casa),nomeSq(g.ospite),haRis(g)?`${g.pc}-${g.po}`:'',g.campo,nomeArb(g.a1),g.voto1??'',nomeArb(g.a2),g.voto2??'',nomeOss(g.oss),g.note]);
+  for(const a of arbs) griglia.push([`${a.cognome} ${a.nome}`, ...T.map(t=>{ const g=garaDiArbitro(t,a.id); if(!g) return t.compilato?'RIPOSO':''; const v=valDi(g,a.id); return `${nomeOss(g.oss)||'no oss.'} – ${partita(g)}${v?' – '+(v.soloF?v.f.nome:fmtV(v.voto)):''}`; })]);
+  const riep=[['Arbitro','Città','Gare','Andata','Ritorno','Playoff','Riposi','Osservazioni','% copertura','Media (fasce = valore centrale)','Ultima valutazione']];
+  for(const a of arbs){ const s=statArbitro(a.id,T); riep.push([`${a.cognome} ${a.nome}`,a.citta,s.n,s.A,s.R,s.PO,s.riposi,s.oss,s.n?Math.round(s.cop*100)/100:0,s.media!=null?Math.round(s.media*100)/100:'',s.ultimoVal?(s.ultimoVal.soloF?s.ultimoVal.f.nome:s.ultimoVal.voto):'']); }
+  const gare=[['Turno','Gara n.','Data','Ora','Casa','Ospite','Risultato','Campo','1° arbitro','Voto/fascia 1','2° arbitro','Voto/fascia 2','Osservatore','Note']];
+  for(const t of T) for(const g of t.gare) gare.push([t.label,g.numero,g.data,g.ora,nomeSq(g.casa),nomeSq(g.ospite),haRis(g)?`${g.pc}-${g.po}`:'',g.campo,nomeArb(g.a1),g.voto1??(FASCE.find(f=>f.cls===g.fascia1)?.nome||''),nomeArb(g.a2),g.voto2??(FASCE.find(f=>f.cls===g.fascia2)?.nome||''),nomeOss(g.oss),g.note]);
   const wb=XLSX.utils.book_new();
   const add=(rows,n,w)=>{ const ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=rows[0].map((_,i)=>({wch:i===0?24:w})); XLSX.utils.book_append_sheet(wb,ws,n); };
   const cl=[['Pos','Squadra','G','V','P','Punti','PF','PS','Diff']]; classifica(T.length).forEach((r,i)=>cl.push([i+1,nomeSq(r.id),r.g,r.v,r.p,r.pt,r.pf,r.ps,r.pf-r.ps]));
