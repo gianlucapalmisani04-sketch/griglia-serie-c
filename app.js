@@ -92,7 +92,8 @@ function turni(){
   arr.forEach((t,i)=>{ t.idx=i; t.gare.sort((a,b)=>(a.data+a.ora).localeCompare(b.data+b.ora)||a.numero-b.numero); t.compilato=t.gare.some(g=>g.a1||g.a2); });
   return arr;
 }
-const garaDiArbitro = (t,id) => t.gare.find(g=>g.a1===id||g.a2===id);
+const gareDiArbitro = (t,id) => t.gare.filter(g=>g.a1===id||g.a2===id);   // un arbitro può avere più gare nello stesso weekend
+const garaDiArbitro = (t,id) => gareDiArbitro(t,id)[0];
 const collega = (g,id) => g.a1===id ? g.a2 : g.a1;
 function votoDi(g,id){ const v = g.a1===id ? g.voto1 : g.a2===id ? g.voto2 : null; return v==null||v==='' ? null : +v; }
 /** Valutazione di un arbitro in una gara: voto preciso oppure solo fascia (detta al colloquio) */
@@ -196,13 +197,17 @@ function vGriglia(c){
     let ng=0, no=0;
     h += `<tr class="${a.id===me?'me':''}"><td class="ref">${esc(a.cognome)} ${esc(a.nome.split(' ')[0])}${a.esordiente?' <span class="pill" title="Esordiente in Serie C">E</span>':''}</td>`;
     for(const t of T){
-      const g = garaDiArbitro(t,a.id);
-      if(g){
-        ng++; if(g.oss) no++;
-        const val = valDi(g,a.id), f = val?.f, v = val;
-        const cls = f ? f.cls : (g.oss ? 'oss' : 'noss');
-        const tip = `${partita(g)} · ${fmtData(g.data)} ${g.ora}\nCollega: ${nomeArb(collega(g,a.id))||'—'}\nOsservatore: ${nomeOss(g.oss)||'nessuno'}${val?(val.soloF?`\nFascia: ${f.nome} (voto non noto)`:`\nVoto: ${fmtV(val.voto)} (${f.nome})`):''}`;
-        h += `<td><span class="cell ${cls} ${isAdmin?'click':''}" data-gid="${g.id}" title="${esc(tip)}"><b>${esc(partitaBreve(g))}</b><span class="o">${g.oss?esc(ossCognome(g.oss)):'<i>no oss.</i>'}${val?' · '+fmtVal(val):''}</span></span></td>`;
+      const gg = gareDiArbitro(t,a.id);
+      if(gg.length){
+        h += '<td>';
+        for(const g of gg){
+          ng++; if(g.oss) no++;
+          const val = valDi(g,a.id), f = val?.f;
+          const cls = f ? f.cls : (g.oss ? 'oss' : 'noss');
+          const tip = `${partita(g)} · ${fmtData(g.data)} ${g.ora}\nCollega: ${nomeArb(collega(g,a.id))||'—'}\nOsservatore: ${nomeOss(g.oss)||'nessuno'}${val?(val.soloF?`\nFascia: ${f.nome} (voto non noto)`:`\nVoto: ${fmtV(val.voto)} (${f.nome})`):''}`;
+          h += `<span class="cell ${cls} ${isAdmin?'click':''} ${gg.length>1?'multi':''}" data-gid="${g.id}" title="${esc(tip)}"><b>${esc(partitaBreve(g))}</b><span class="o">${gg.length>1?fmtData(g.data).slice(0,3)+' · ':''}${g.oss?esc(ossCognome(g.oss)):'<i>no oss.</i>'}${val?' · '+fmtVal(val):''}</span></span>`;
+        }
+        h += '</td>';
       } else {
         h += `<td>${t.compilato ? '<span class="cell rest">RIPOSO</span>' : '<span class="cell"></span>'}</td>`;
       }
@@ -227,7 +232,7 @@ function avvisiGara(g, T){
   const out=[]; const t = T.find(x=>x.gare.includes(g)); if(!t) return out;
   for(const id of [g.a1,g.a2].filter(Boolean)){
     const a=arb(id); if(!a) continue;
-    if(t.gare.filter(x=>x.a1===id||x.a2===id).length>1) out.push(`${a.cognome}: designato due volte nella stessa giornata`);
+    if(t.gare.filter(x=>(x.a1===id||x.a2===id) && x.data===g.data && x!==g).length) out.push(`${a.cognome}: designato in due gare nello stesso giorno`);
     const vincoli = vincoliArbitro(id, t, T);
     for(const s of [g.casa,g.ospite]) if(vincoli.recenti.has(s)) out.push(`${a.cognome}: ha già arbitrato ${nomeSq(s)} nelle ultime ${DB.impostazioni.finestra} giornate`);
     if(cittaVietata(a,g)) out.push(`${a.cognome}: squadra della propria città (${a.citta})`);
@@ -327,8 +332,8 @@ function vincoliArbitro(id, t, T){
   const N = +DB.impostazioni.finestra || 3;
   const prima = T.filter(x=>x.idx < t.idx);
   const recenti = new Set(), conteggio = {}, ultima = {};
-  prima.slice(-N).forEach(x=>{ const g=garaDiArbitro(x,id); if(g){ recenti.add(g.casa); recenti.add(g.ospite); }});
-  prima.forEach((x,i)=>{ const g=garaDiArbitro(x,id); if(g){ for(const q of [g.casa,g.ospite]){ conteggio[q]=(conteggio[q]||0)+1; ultima[q]=prima.length-i; } } });
+  prima.slice(-N).forEach(x=>{ for(const g of gareDiArbitro(x,id)){ recenti.add(g.casa); recenti.add(g.ospite); }});
+  prima.forEach((x,i)=>{ for(const g of gareDiArbitro(x,id)){ for(const q of [g.casa,g.ospite]){ conteggio[q]=(conteggio[q]||0)+1; ultima[q]=prima.length-i; } } });
   return { recenti, conteggio, ultima };   // ultima[squadra] = quante giornate fa l'ha arbitrata
 }
 /** Stato di riposo: quante giornate consecutive (tra quelle compilate) ha riposato prima di t */
@@ -403,7 +408,7 @@ function simula(t, T, N=3000){
   }
   const res = {};
   for(const a of DB.arbitri){
-    if(fissi.has(a.id)){ const g=garaDiArbitro(t,a.id); res[a.id]={fisso:true, pDes:1, pg:{[g.id]:1}}; continue; }
+    if(fissi.has(a.id)){ res[a.id]={fisso:true, pDes:1, pg:Object.fromEntries(gareDiArbitro(t,a.id).map(g=>[g.id,1]))}; continue; }
     if(ind.has(a.id)){ res[a.id]={indisp:true, pDes:0, pg:{}}; continue; }
     const c=cont[a.id]; const nPoss=t.gare.filter(g=>slot0[g.id]>0 && comp[a.id][g.id].w>0).length;
     res[a.id]={ pDes: S? c.des/N : 0, pg: Object.fromEntries(Object.entries(c.g).map(([k,v])=>[k,v/N])), stato: statoRiposo(a.id,t,T), comp: comp[a.id], nPoss };
@@ -425,7 +430,7 @@ function vPrevisione(c){
   const arbOpts=[...DB.arbitri].sort((x,y)=>x.cognome.localeCompare(y.cognome));
   const righe = t.gare.map(g=>{
     const p = r.pg[g.id]||0; const cp = r.comp?.[g.id];
-    const motivo = r.fisso ? (garaDiArbitro(t,prevArb)===g?'già designato':'') : r.indisp ? 'indisponibile' : (cp && cp.w===0 ? cp.motivo : (g.a1&&g.a2 ? 'gara già completa' : ''));
+    const motivo = r.fisso ? (gareDiArbitro(t,prevArb).includes(g)?'già designato':'') : r.indisp ? 'indisponibile' : (cp && cp.w===0 ? cp.motivo : (g.a1&&g.a2 ? 'gara già completa' : ''));
     const ul = r.comp?.[g.id]?.v?.ultima || vincoliArbitro(prevArb,t,T).ultima;
     const txt = q => `${sigla(q)}: ${ul[q]==null?'mai':ul[q]===1?'giornata scorsa':ul[q]+' giornate fa'}`;
     return {g,p,motivo,storia: txt(g.casa)+' · '+txt(g.ospite)};
@@ -476,8 +481,9 @@ function statArbitro(id, T){
   const s = {gare:[], A:0, R:0, PO:0, oss:0, voti:[], riposi:0, squadre:{}, colleghi:{}, osservatori:{}, km:0};
   const a = arb(id);
   for(const t of T){
-    const g = garaDiArbitro(t,id);
-    if(!g){ if(t.compilato) s.riposi++; continue; }
+    const gg = gareDiArbitro(t,id);
+    if(!gg.length){ if(t.compilato) s.riposi++; continue; }
+    for(const g of gg){
     s.gare.push({g,t});
     if(g.fase==='andata') s.A++; else if(g.fase==='ritorno') s.R++; else s.PO++;
     if(g.oss){ s.oss++; s.osservatori[g.oss]=(s.osservatori[g.oss]||0)+1; }
@@ -485,6 +491,7 @@ function statArbitro(id, T){
     for(const q of [g.casa,g.ospite]) s.squadre[q]=(s.squadre[q]||0)+1;
     const c=collega(g,id); if(c) s.colleghi[c]=(s.colleghi[c]||0)+1;
     const d=km(a?.citta, cittaSq(g.casa)); if(d) s.km+=2*d;
+    }
   }
   s.n = s.gare.length;
   s.media = s.voti.length ? s.voti.reduce((x,y)=>x+y.v,0)/s.voti.length : null;   // le fasce contano col valore centrale
@@ -579,7 +586,7 @@ function vMatrice(c){
   const T=turni(); const arbs=[...DB.arbitri].sort((a,b)=>a.cognome.localeCompare(b.cognome));
   const cols = matTipo==='oss' ? DB.osservatori.map(o=>({id:o.id, l:o.nome.split(' ')[0]})) : DB.squadre.map(s=>({id:s.id, l:sigla(s.id)}));
   const M={}; let max=1;
-  for(const a of arbs){ M[a.id]={}; for(const t of T){ const g=garaDiArbitro(t,a.id); if(!g) continue;
+  for(const a of arbs){ M[a.id]={}; for(const t of T) for(const g of gareDiArbitro(t,a.id)){
     const keys = matTipo==='oss' ? (g.oss?[g.oss]:[]) : [g.casa,g.ospite];
     keys.forEach(k=>{ M[a.id][k]=(M[a.id][k]||0)+1; max=Math.max(max,M[a.id][k]); }); } }
   const bg = v => v ? `background:color-mix(in srgb, var(--accent) ${Math.round(15+70*v/max)}%, transparent);color:${v/max>.6?'#fff':'inherit'}` : '';
@@ -747,7 +754,7 @@ function esportaExcel(){
   if(!window.XLSX) return toast('Libreria Excel non caricata');
   const T=turni(); const arbs=[...DB.arbitri].sort((a,b)=>a.cognome.localeCompare(b.cognome));
   const griglia=[['Arbitro',...T.map(t=>t.label)]];
-  for(const a of arbs) griglia.push([`${a.cognome} ${a.nome}`, ...T.map(t=>{ const g=garaDiArbitro(t,a.id); if(!g) return t.compilato?'RIPOSO':''; const v=valDi(g,a.id); return `${nomeOss(g.oss)||'no oss.'} – ${partita(g)}${v?' – '+(v.soloF?v.f.nome:fmtV(v.voto)):''}`; })]);
+  for(const a of arbs) griglia.push([`${a.cognome} ${a.nome}`, ...T.map(t=>{ const gg=gareDiArbitro(t,a.id); if(!gg.length) return t.compilato?'RIPOSO':''; return gg.map(g=>{ const v=valDi(g,a.id); return `${nomeOss(g.oss)||'no oss.'} – ${partita(g)}${v?' – '+(v.soloF?v.f.nome:fmtV(v.voto)):''}`; }).join(' / '); })]);
   const riep=[['Arbitro','Città','Gare','Andata','Ritorno','Playoff','Riposi','Osservazioni','% copertura','Media (fasce = valore centrale)','Ultima valutazione']];
   for(const a of arbs){ const s=statArbitro(a.id,T); riep.push([`${a.cognome} ${a.nome}`,a.citta,s.n,s.A,s.R,s.PO,s.riposi,s.oss,s.n?Math.round(s.cop*100)/100:0,s.media!=null?Math.round(s.media*100)/100:'',s.ultimoVal?(s.ultimoVal.soloF?s.ultimoVal.f.nome:s.ultimoVal.voto):'']); }
   const gare=[['Turno','Gara n.','Data','Ora','Casa','Ospite','Risultato','Campo','1° arbitro','Voto/fascia 1','2° arbitro','Voto/fascia 2','Osservatore','Note']];
